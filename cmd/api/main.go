@@ -11,6 +11,8 @@ import (
 	"os/signal"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/jha-captech/blog/internal/config"
 	"github.com/jha-captech/blog/internal/database"
 	"github.com/jha-captech/blog/internal/middleare"
@@ -59,7 +61,13 @@ func run(ctx context.Context) error {
 	}()
 	logger.InfoContext(ctx, "Connected successfully to the database")
 
-	usersService := services.NewUsersService(logger, db)
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     fmt.Sprintf("%s:%d", cfg.CacheHost, cfg.CachePort),
+		Password: cfg.CachePassword,
+		DB:       cfg.CacheDB,
+	})
+
+	usersService := services.NewUsersService(logger, db, rdb)
 
 	// Create a serve mux to act as our route multiplexer
 	mux := http.NewServeMux()

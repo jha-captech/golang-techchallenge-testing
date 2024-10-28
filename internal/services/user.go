@@ -3,11 +3,14 @@ package services
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
+	"strconv"
 
 	"github.com/jha-captech/blog/internal/models"
+	"github.com/redis/go-redis/v9"
 )
 
 // UsersService is a service capable of performing CRUD operations for
@@ -15,13 +18,15 @@ import (
 type UsersService struct {
 	logger *slog.Logger
 	db     *sql.DB
+	rdb    *redis.Client
 }
 
 // NewUsersService creates a new UsersService and returns a pointer to it.
-func NewUsersService(logger *slog.Logger, db *sql.DB) *UsersService {
+func NewUsersService(logger *slog.Logger, db *sql.DB, rdb *redis.Client) *UsersService {
 	return &UsersService{
 		logger: logger,
 		db:     db,
+		rdb:    rdb,
 	}
 }
 
@@ -36,6 +41,33 @@ func (s *UsersService) CreateUser(ctx context.Context, user models.User) (models
 func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, error) {
 	s.logger.DebugContext(ctx, "Reading user", "id", id)
 
+	val, err := s.rdb.Get(ctx, strconv.FormatUint(id, 10)).Result()
+	switch {
+	case errors.Is(err, redis.Nil):
+		s.logger.DebugContext(ctx, "User not found in cache", "id", id)
+		break
+
+	case err != nil:
+		s.logger.ErrorContext(ctx, "Failed to read user from cache", "id", id, "error", err)
+		return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to read user from cache: %w", err)
+
+	case val == "":
+		s.logger.DebugContext(ctx, "User not found in cache", "id", id)
+		break
+
+	default:
+		s.logger.DebugContext(ctx, "User found in cache", "id", id)
+
+		var user models.User
+		if err := json.Unmarshal([]byte(val), &user); err != nil {
+			s.logger.ErrorContext(ctx, "Failed to unmarshal user from cache", "id", id, "error", err)
+			return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to unmarshal user from cache: %w", err)
+		}
+
+		return user, nil
+	}
+
+	s.logger.DebugContext(ctx, "Reading user from database", "id", id)
 	row := s.db.QueryRowContext(
 		ctx,
 		`
@@ -51,7 +83,7 @@ func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, er
 
 	var user models.User
 
-	err := row.Scan(&user.ID, &user.Name, &user.Email, &user.Password)
+	err = row.Scan(&user.ID, &user.Name, &user.Email, &user.Password)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -62,6 +94,15 @@ func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, er
 				err,
 			)
 		}
+	}
+
+	s.logger.DebugContext(ctx, "Setting user in cache", "id", id)
+
+	jsonData, _ := json.Marshal(user)
+
+	if err = s.rdb.Set(ctx, strconv.FormatUint(id, 10), jsonData, 0).Err(); err != nil {
+		s.logger.ErrorContext(ctx, "Failed to write user to cache", "id", id, "error", err)
+		return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to write user to cache: %w", err)
 	}
 
 	return user, nil

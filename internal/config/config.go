@@ -20,6 +20,10 @@ type Config struct {
 	Host           string     `env:"HOST,required"`
 	Port           string     `env:"PORT,required"`
 	LogLevel       slog.Level `env:"LOG_LEVEL,required"`
+	CacheHost      string     `env:"CACHE_HOST,required"`
+	CachePort      int        `env:"CACHE_PORT,required"`
+	CacheDB        int        `env:"CACHE_DB,required"`
+	CachePassword  string     `env:"CACHE_PASSWORD,required"`
 }
 
 // New loads configuration from environment variables and a .env file, and returns a
