@@ -2,15 +2,18 @@ SHELL := /bin/bash
 
 .PHONY: swag-init
 swag-init:
-	swag init -g cmd/http/routes/routes.go --output "cmd/http/docs"
-	swag fmt
+	@swag init \
+		--generalInfo "./../../internal/routes/routes.go" \
+		--output "cmd/api/docs" \
+		--dir "./internal/handlers"
+	@swag fmt
 
 .PHONY: start-web-app 
 start-web-app:
 	@$(MAKE) LOG MSG_TYPE=info LOG_MESSAGE="Starting web app..."
 	@$(MAKE) start-database
 	@$(MAKE) LOG MSG_TYPE=success LOG_MESSAGE="Started database"
-	@go run cmd/http/main.go
+	@go run cmd/api/main.go
 
 .PHONY: stop-web-app
 stop-web-app:
@@ -18,34 +21,23 @@ stop-web-app:
 	@$(MAKE) stop-database
 	@$(MAKE) LOG MSG_TYPE=success LOG_MESSAGE="Stopped database"
 
-.PHONY: start-podman-machine
-start-podman-machine:
-	@$(MAKE) LOG MSG_TYPE=info LOG_MESSAGE="Starting Podman machine..."
-	@podman machine list | grep -q 'running' || podman machine start
-
-.PHONY: stop-podman-machine
-stop-podman-machine:
-	@$(MAKE) LOG MSG_TYPE=info LOG_MESSAGE="Stopping Podman machine..."
-	@podman machine list --noheading --format "{{.Name}} {{.Running}}" | grep 'true' > /dev/null && podman machine stop || true
-
 .PHONY: start-database
 start-database:
 	@$(MAKE) LOG MSG_TYPE=info LOG_MESSAGE="Starting database..."
-	@podman start PostgresServer
+	@docker compose up -d
 
 .PHONY: stop-database
 stop-database:
 	@$(MAKE) LOG MSG_TYPE=info LOG_MESSAGE="Stopping database..."
-	@podman stop PostgresServer
-
+	@docker compose down
 
 run-unit-test:
-	go test -cover ./internal/service ./internal/config ./internal/database ./cmd/http/routes ./cmd/http
+	@go test -cover ./internal/service ./internal/config ./internal/database ./internal/routes ./cmd/api
 
 .PHONY: check-coverage
 check-coverage:
 	@$(MAKE) LOG MSG_TYPE=info LOG_MESSAGE="Running unit tests and generating coverage report..."
-	go test -coverprofile=coverage.out ./internal/service ./internal/config ./internal/database ./cmd/http/routes ./cmd/http
+	go test -coverprofile=coverage.out ./internal/service ./internal/config ./internal/database ./cmd/routes ./cmd/api
 	go tool cover -html=coverage.out -o coverage.html
 	@$(MAKE) LOG MSG_TYPE=warn LOG_MESSAGE="Link to coverage report file: file://$$(PWD)/coverage.html"
 
