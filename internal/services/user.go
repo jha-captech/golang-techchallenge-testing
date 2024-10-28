@@ -3,11 +3,11 @@ package services
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/jha-captech/blog/internal/models"
 	"github.com/redis/go-redis/v9"
@@ -19,14 +19,19 @@ type UsersService struct {
 	logger *slog.Logger
 	db     *sql.DB
 	rdb    *redis.Client
+	cache  *Client
 }
 
 // NewUsersService creates a new UsersService and returns a pointer to it.
-func NewUsersService(logger *slog.Logger, db *sql.DB, rdb *redis.Client) *UsersService {
+func NewUsersService(logger *slog.Logger, db *sql.DB, rdb *redis.Client, expiration time.Duration) *UsersService {
 	return &UsersService{
 		logger: logger,
 		db:     db,
 		rdb:    rdb,
+		cache: &Client{
+			Client:     rdb,
+			expiration: expiration,
+		},
 	}
 }
 
@@ -39,35 +44,26 @@ func (s *UsersService) CreateUser(ctx context.Context, user models.User) (models
 // ReadUser attempts to read a user from the database using the provided id. A
 // fully hydrated models.User or error is returned.
 func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, error) {
-	s.logger.DebugContext(ctx, "Reading user", "id", id)
+	logger := s.logger.With(slog.String("func", "services.UsersService.ReadUser"))
 
-	val, err := s.rdb.Get(ctx, strconv.FormatUint(id, 10)).Result()
-	switch {
-	case errors.Is(err, redis.Nil):
-		s.logger.DebugContext(ctx, "User not found in cache", "id", id)
-		break
+	logger.DebugContext(ctx, "Getting user", "id", id)
 
-	case err != nil:
-		s.logger.ErrorContext(ctx, "Failed to read user from cache", "id", id, "error", err)
+	var user models.User
+
+	// Check the cache for the user object
+	logger.DebugContext(ctx, "Reading user from cache", "id", id)
+	found, err := s.cache.Get(ctx, strconv.FormatUint(id, 10)).UnmarshalJSON(&user)
+	if err != nil {
 		return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to read user from cache: %w", err)
+	}
 
-	case val == "":
-		s.logger.DebugContext(ctx, "User not found in cache", "id", id)
-		break
-
-	default:
-		s.logger.DebugContext(ctx, "User found in cache", "id", id)
-
-		var user models.User
-		if err := json.Unmarshal([]byte(val), &user); err != nil {
-			s.logger.ErrorContext(ctx, "Failed to unmarshal user from cache", "id", id, "error", err)
-			return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to unmarshal user from cache: %w", err)
-		}
-
+	// If the user was found in the cache, return it
+	if found {
 		return user, nil
 	}
 
-	s.logger.DebugContext(ctx, "Reading user from database", "id", id)
+	// If the user was not found in the cache, read it from the database
+	logger.DebugContext(ctx, "Reading user from database", "id", id)
 	row := s.db.QueryRowContext(
 		ctx,
 		`
@@ -81,8 +77,7 @@ func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, er
 		id,
 	)
 
-	var user models.User
-
+	// Scan the row into the user object
 	err = row.Scan(&user.ID, &user.Name, &user.Email, &user.Password)
 	if err != nil {
 		switch {
@@ -96,12 +91,9 @@ func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, er
 		}
 	}
 
-	s.logger.DebugContext(ctx, "Setting user in cache", "id", id)
-
-	jsonData, _ := json.Marshal(user)
-
-	if err = s.rdb.Set(ctx, strconv.FormatUint(id, 10), jsonData, 0).Err(); err != nil {
-		s.logger.ErrorContext(ctx, "Failed to write user to cache", "id", id, "error", err)
+	// Write the user to the cache
+	logger.DebugContext(ctx, "Setting user in cache", "id", id)
+	if err = s.cache.SetJSON(ctx, strconv.FormatUint(id, 10), user); err != nil {
 		return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to write user to cache: %w", err)
 	}
 
@@ -115,14 +107,14 @@ func (s *UsersService) UpdateUser(ctx context.Context, id uint64, patch models.U
 	return models.User{}, nil
 }
 
-// CreateUser attempts to create the provided user, returning a fully hydrated
-// models.User or an error.
+// DeleteUser attempts to delete the user with the provided id. An error is
+// returned if the delete fails.
 func (s *UsersService) DeleteUser(ctx context.Context, id uint64) error {
 	return nil
 }
 
-// CreateUser attempts to create the provided user, returning a fully hydrated
-// models.User or an error.
+// ListUsers attempts to list all users in the database. A slice of models.User
+// or an error is returned.
 func (s *UsersService) ListUsers(ctx context.Context, id uint64) ([]models.User, error) {
 	return []models.User{}, nil
 }
