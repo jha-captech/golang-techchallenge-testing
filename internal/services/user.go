@@ -18,7 +18,6 @@ import (
 type UsersService struct {
 	logger *slog.Logger
 	db     *sql.DB
-	rdb    *redis.Client
 	cache  *Client
 }
 
@@ -27,7 +26,6 @@ func NewUsersService(logger *slog.Logger, db *sql.DB, rdb *redis.Client, expirat
 	return &UsersService{
 		logger: logger,
 		db:     db,
-		rdb:    rdb,
 		cache: &Client{
 			Client:     rdb,
 			expiration: expiration,
@@ -45,16 +43,18 @@ func (s *UsersService) CreateUser(ctx context.Context, user models.User) (models
 // fully hydrated models.User or error is returned.
 func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, error) {
 	logger := s.logger.With(slog.String("func", "services.UsersService.ReadUser"))
-
 	logger.DebugContext(ctx, "Getting user", "id", id)
-
-	var user models.User
 
 	// Check the cache for the user object
 	logger.DebugContext(ctx, "Reading user from cache", "id", id)
+
+	var user models.User
 	found, err := s.cache.Get(ctx, strconv.FormatUint(id, 10)).UnmarshalJSON(&user)
 	if err != nil {
-		return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to read user from cache: %w", err)
+		return models.User{}, fmt.Errorf(
+			"[in services.UsersService.ReadUser] failed to read user from cache: %w",
+			err,
+		)
 	}
 
 	// If the user was found in the cache, return it
@@ -94,7 +94,10 @@ func (s *UsersService) ReadUser(ctx context.Context, id uint64) (models.User, er
 	// Write the user to the cache
 	logger.DebugContext(ctx, "Setting user in cache", "id", id)
 	if err = s.cache.SetJSON(ctx, strconv.FormatUint(id, 10), user); err != nil {
-		return models.User{}, fmt.Errorf("[in services.UsersService.ReadUser] failed to write user to cache: %w", err)
+		return models.User{}, fmt.Errorf(
+			"[in services.UsersService.ReadUser] failed to write user to cache: %w",
+			err,
+		)
 	}
 
 	return user, nil

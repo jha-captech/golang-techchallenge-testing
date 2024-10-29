@@ -67,7 +67,7 @@ func run(ctx context.Context) error {
 		DB:       cfg.CacheDB,
 	})
 
-	usersService := services.NewUsersService(logger, db, rdb)
+	usersService := services.NewUsersService(logger, db, rdb, 0)
 
 	// Create a serve mux to act as our route multiplexer
 	mux := http.NewServeMux()
