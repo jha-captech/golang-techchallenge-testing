@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -12,10 +13,11 @@ import (
 	"time"
 
 	"github.com/jha-captech/blog/internal/config"
-	"github.com/jha-captech/blog/internal/database"
 	"github.com/jha-captech/blog/internal/middleare"
 	"github.com/jha-captech/blog/internal/routes"
 	"github.com/jha-captech/blog/internal/services"
+
+	_ "github.com/jackc/pgx/v5/stdlib"
 )
 
 func main() {
@@ -40,7 +42,8 @@ func run(ctx context.Context) error {
 	}))
 
 	// Create a new DB connection using environment config
-	db, err := database.Connect(ctx, logger, fmt.Sprintf(
+	logger.DebugContext(ctx, "Connecting to database")
+	db, err := sql.Open("pgx", fmt.Sprintf(
 		"host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		cfg.DBHost,
 		cfg.DBUserName,
@@ -49,16 +52,25 @@ func run(ctx context.Context) error {
 		cfg.DBPort,
 	))
 	if err != nil {
-		return fmt.Errorf("[in main.run] failed to open database: %w", err)
+		return fmt.Errorf("[in database.Connect] failed to open database: %w", err)
 	}
+
+	// Ping the database to verify connection
+	logger.DebugContext(ctx, "Pinging database")
+	if err = db.PingContext(ctx); err != nil {
+		return fmt.Errorf("[in database.Connect] failed to ping database: %w", err)
+	}
+
 	defer func() {
 		logger.DebugContext(ctx, "Closing database connection")
 		if err = db.Close(); err != nil {
 			logger.ErrorContext(ctx, "Failed to close database connection", "err", err)
 		}
 	}()
+
 	logger.InfoContext(ctx, "Connected successfully to the database")
 
+	// Create a new users service
 	usersService := services.NewUsersService(logger, db)
 
 	// Create a serve mux to act as our route multiplexer
