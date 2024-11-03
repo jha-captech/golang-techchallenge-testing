@@ -31,12 +31,12 @@ type readUserResponse struct {
 //	@Tags			user
 //	@Accept			json
 //	@Produce		json
-//	@Param			id	path		string	true	"User ID"
-//	@Success		200	{object}	uint
+//	@Param			id	path		string			true	"User ID"
+//	@Success		200	{object}	readUserResponse
 //	@Failure		400	{object}	string
 //	@Failure		404	{object}	string
 //	@Failure		500	{object}	string
-//	@Router			/users/{id}  [GET]
+//	@Router			/users/{id}  	[GET]
 func HandleReadUser(logger *slog.Logger, userReader userReader) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()

@@ -15,6 +15,13 @@ type Client struct {
 	expiration time.Duration
 }
 
+func NewClient(client *redis.Client, expiration time.Duration) *Client {
+	return &Client{
+		Client:     client,
+		expiration: expiration,
+	}
+}
+
 type StringCmd struct {
 	*redis.StringCmd
 }
@@ -23,7 +30,7 @@ type StatusCmd struct {
 	*redis.StatusCmd
 }
 
-func (c *Client) SetJSON(ctx context.Context, key string, value interface{}) error {
+func (c *Client) SetMarshal(ctx context.Context, key string, value interface{}) error {
 	jsonData, err := json.Marshal(value)
 	if err != nil {
 		return fmt.Errorf("[in services.Client.Set] failed to marshal value: %w", err)
@@ -59,7 +66,7 @@ func (cmd *StringCmd) Result() (string, bool, error) {
 	return val, true, nil
 }
 
-func (cmd *StringCmd) UnmarshalJSON(v any) (bool, error) {
+func (cmd *StringCmd) Unmarshal(v any) (bool, error) {
 	val, err := cmd.StringCmd.Result()
 	if err != nil {
 		switch {

@@ -3,6 +3,7 @@ package handlers
 import (
 	"log/slog"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -13,7 +14,7 @@ func TestHandleHealthCheck(t *testing.T) {
 	}{
 		"happy path": {
 			wantStatus: 200,
-			wantBody:   `{"status": "ok"}`,
+			wantBody:   `{"status":"ok"}`,
 		},
 	}
 	for name, tc := range tests {
@@ -36,7 +37,7 @@ func TestHandleHealthCheck(t *testing.T) {
 			}
 
 			// Check the body
-			if rec.Body.String() != tc.wantBody {
+			if strings.Trim(rec.Body.String(), "\n") != tc.wantBody {
 				t.Errorf("want body %q, got %q", tc.wantBody, rec.Body.String())
 			}
 		})

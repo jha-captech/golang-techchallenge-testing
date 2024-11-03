@@ -33,7 +33,12 @@ func New() (Config, error) {
 	// Discard errors coming from this function. This allows us to call this
 	// function without a .env file which will by default load values directly
 	// from system environment variables.
-	_ = godotenv.Load()
+	err := godotenv.Load()
+	if err != nil {
+		fmt.Println(".env file not found")
+	} else {
+		fmt.Println(".env file found")
+	}
 
 	// Once values have been loaded into system env vars, parse those into our
 	// config struct and validate them returning any errors.

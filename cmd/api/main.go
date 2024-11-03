@@ -77,6 +77,7 @@ func run(ctx context.Context) error {
 
 	// Wrap the mux with middleware
 	wrappedMux := middleare.Logger(logger)(mux)
+	wrappedMux = middleare.Recovery(logger)(wrappedMux)
 
 	// Create a new http server with our mux as the handler
 	httpServer := &http.Server{

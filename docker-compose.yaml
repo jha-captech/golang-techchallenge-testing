@@ -27,6 +27,8 @@ services:
   cache:
     image: redis:7.4-alpine
     restart: always
+    networks:
+      - app
     env_file:
       - .env
     ports:
@@ -35,6 +37,46 @@ services:
     volumes:
       - cache:/data
 
+  api:
+    build:
+      context: .
+      # Correct the path to your Dockerfile
+      dockerfile: Dockerfile
+      target: local
+    networks:
+      - app
+    ports:
+      - 8000:${PORT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      #      PORT: 8080
+      DATABASE_HOST: postgres
+      CACHE_HOST: cache
+    # Important to bind/mount your codebase dir to /app dir for live reload
+    volumes:
+      - ./:/app
+
+#  api:
+#    build: .
+#    networks:
+#      - app
+#    ports:
+#      - "8000:${PORT}"
+#    depends_on:
+#      postgres:
+#        condition: service_healthy
+#    env_file:
+#      - .env
+#    environment:
+#      HOST: 0.0.0.0
+#      DATABASE_HOST: postgres
+#      CACHE_HOST: cache
+
 volumes:
   postgres-db:
   cache:
@@ -42,3 +84,4 @@ volumes:
 
 networks:
   app:
+    driver: bridge
